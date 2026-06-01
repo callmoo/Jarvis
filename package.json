@@ -5,15 +5,16 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac --x64 --arm64"
+    "build": "electron-builder --mac --x64 --arm64 --publish never"
   },
   "build": {
     "appId": "com.callum.jarvis",
     "productName": "JARVIS",
     "copyright": "Callum",
+    "publish": null,
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
+      "icon": "build/icon.png",
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "hardenedRuntime": true,
@@ -35,8 +36,7 @@
       "main.js",
       "index.html",
       "preload.js"
-    ],
-    "extraResources": []
+    ]
   },
   "devDependencies": {
     "electron": "^29.0.0",
