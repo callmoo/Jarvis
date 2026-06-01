@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>J.A.R.V.I.S.</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue: #00c8ff;
+    --blue-dim: #0090b8;
+    --bg: #050d12;
+    --panel: #080f15;
+    --panel-border: rgba(0,200,255,0.15);
+    --text: #c8f0ff;
+    --text-dim: #5a8fa0;
+    --green: #00ffaa;
+    --red: #ff4455;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+  }
+
+  /* draggable title area for frameless window */ .drag-region { -webkit-app-region: drag; height: 28px; position: fixed; top: 0; left: 80px; right: 0; z-index: 1000; } html, body { height: 100%; background: #000; color: var(--text); font-family: var(--sans); overflow: hidden; }
+
+  /* scanlines */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px);
+    pointer-events: none; z-index: 900;
+  }
+
+  /* ── SLEEP SCREEN ─────────────────────────────────── */
+  #sleep-screen {
+    position: fixed; inset: 0; z-index: 800;
+    background: #000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px;
+    transition: opacity 1.2s ease;
+  }
+  #sleep-screen.hidden { opacity: 0; pointer-events: none; }
+
+  .sleep-logo {
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: 0.5em;
+    color: #0d2028;
+    text-transform: uppercase;
+    animation: sleepPulse 4s ease-in-out infinite;
+  }
+  @keyframes sleepPulse { 0%,100%{opacity:0.3} 50%{opacity:0.6} }
+
+  .sleep-orb {
+    width: 120px; height: 120px; border-radius: 50%;
+    border: 1px solid #0d2028;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    animation: sleepPulse 4s ease-in-out infinite;
+  }
+  .sleep-orb::after {
+    content: '';
+    position: absolute; inset: -14px; border-radius: 50%;
+    border: 1px solid #070f14;
+    animation: sleepPulse 4s ease-in-out infinite reverse;
+  }
+  .sleep-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #0d3040;
+    box-shadow: 0 0 12px #0d3040;
+  }
+  .sleep-hint {
+    font-family: var(--mono); font-size: 10px;
+    color: #0d2028; letter-spacing: 0.3em;
+    animation: sleepPulse 4s ease-in-out infinite;
+  }
+
+  /* ── BOOT OVERLAY ─────────────────────────────────── */
+  #boot-overlay {
+    position: fixed; inset: 0; z-index: 700;
+    background: #000;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px;
+  }
+  #boot-overlay.active { display: flex; }
+
+  .boot-logo {
+    font-family: var(--mono); font-size: 32px; letter-spacing: 0.4em;
+    color: var(--blue); text-shadow: 0 0 40px rgba(0,200,255,0.8);
+    opacity: 0;
+    animation: none;
+  }
+  .boot-logo.show { animation: bootLogoIn 0.6s ease forwards; }
+  @keyframes bootLogoIn { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:none} }
+
+  .boot-lines { width: 320px; display: flex; flex-direction: column; gap: 6px; }
+  .boot-line {
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+    letter-spacing: 0.1em; opacity: 0;
+    display: flex; justify-content: space-between;
+  }
+  .boot-line.show { animation: bootLineIn 0.3s ease forwards; }
+  @keyframes bootLineIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+  .boot-line .ok { color: var(--green); }
+
+  .boot-bar-wrap { width: 320px; }
+  .boot-bar-label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.2em; margin-bottom: 6px; }
+  .boot-bar-track { height: 2px; background: #0d2028; border-radius: 1px; overflow: hidden; }
+  .boot-bar-fill { height: 100%; width: 0%; background: var(--blue); box-shadow: 0 0 8px var(--blue); transition: width 0.3s ease; }
+
+  /* ── MAIN UI ──────────────────────────────────────── */
+  #main-ui {
+    opacity: 0; transition: opacity 1s ease;
+    height: 100vh; background: var(--bg);
+    pointer-events: none;
+  }
+  #main-ui.visible { opacity: 1; pointer-events: all; }
+
+  .corners .corner { position: fixed; width: 28px; height: 28px; z-index: 10; }
+  .corners .corner::before, .corners .corner::after { content: ''; position: absolute; background: var(--blue); }
+  .corners .corner::before { width: 100%; height: 1.5px; }
+  .corners .corner::after { width: 1.5px; height: 100%; }
+  .corners .corner.tl { top: 14px; left: 14px; }
+  .corners .corner.tl::before, .corners .corner.tl::after { top: 0; left: 0; }
+  .corners .corner.tr { top: 14px; right: 14px; transform: scaleX(-1); }
+  .corners .corner.bl { bottom: 14px; left: 14px; transform: scaleY(-1); }
+  .corners .corner.br { bottom: 14px; right: 14px; transform: scale(-1); }
+
+  .layout { height: 100vh; display: grid; grid-template-columns: 200px 1fr; grid-template-rows: auto 1fr auto; }
+
+  header {
+    grid-column: 1 / -1; padding: 16px 32px 12px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo-sub { font-family: var(--mono); font-size: 9px; color: var(--blue-dim); letter-spacing: 0.35em; }
+  .logo-title { font-family: var(--mono); font-size: 20px; color: var(--blue); letter-spacing: 0.22em; text-shadow: 0 0 24px rgba(0,200,255,0.55); }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .api-wrap { display: flex; align-items: center; gap: 6px; }
+  .api-wrap label { font-family: var(--mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.18em; }
+  .api-wrap input {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    color: var(--text); padding: 4px 8px; border-radius: 2px; width: 200px; outline: none;
+  }
+  .api-wrap input:focus { border-color: var(--blue); }
+  .save-btn {
+    font-family: var(--mono); font-size: 10px; background: none;
+    border: 1px solid var(--blue-dim); color: var(--blue);
+    padding: 4px 8px; border-radius: 2px; cursor: pointer;
+  }
+  .save-btn:hover { background: rgba(0,200,255,0.08); }
+  .hdr-pill {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    padding: 3px 10px; border-radius: 2px;
+    border: 1px solid var(--green); color: var(--green); transition: all 0.3s;
+  }
+
+  aside {
+    grid-row: 2; border-right: 1px solid var(--panel-border);
+    padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
+  }
+  .s-title { font-family: var(--mono); font-size: 9px; color: var(--blue-dim); letter-spacing: 0.28em; margin-bottom: 8px; text-transform: uppercase; }
+
+  .orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; }
+  .orb-outer { position: relative; width: 80px; height: 80px; cursor: pointer; }
+  .orb-ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(0,200,255,0.12); transition: all 0.3s; }
+  .orb-ring.r2 { inset: -10px; border-color: rgba(0,200,255,0.05); }
+  .orb-ring.r3 { inset: -20px; border-color: rgba(0,200,255,0.025); }
+  .orb-core {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 36% 36%, rgba(0,200,255,0.12), rgba(0,30,50,0.85));
+    border: 1.5px solid rgba(0,200,255,0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .orb-outer.listening .orb-core { border-color: var(--blue); box-shadow: 0 0 22px rgba(0,200,255,0.4); }
+  .orb-outer.listening .orb-ring { border-color: rgba(0,200,255,0.45); animation: spin 2.5s linear infinite; }
+  .orb-outer.listening .orb-ring.r2 { animation: spin 4s linear infinite reverse; }
+  .orb-outer.thinking .orb-core { border-color: #aa88ff; box-shadow: 0 0 22px rgba(150,100,255,0.35); }
+  .orb-outer.speaking .orb-core { border-color: var(--green); box-shadow: 0 0 22px rgba(0,255,170,0.3); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .orb-status { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; text-align: center; min-height: 16px; }
+
+  .cap { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: 2px; margin-bottom: 4px; color: var(--text-dim); }
+  .cap.on { border-color: rgba(0,200,255,0.28); color: var(--text); }
+  .cdot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+  .cap.on .cdot { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+  .transcript { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .t-msg { font-family: var(--mono); font-size: 10px; line-height: 1.5; padding: 6px 8px; border-radius: 2px; }
+  .t-msg.user { color: rgba(0,255,170,0.7); border-left: 1px solid rgba(0,255,170,0.3); }
+  .t-msg.jarvis { color: rgba(0,200,255,0.7); border-left: 1px solid rgba(0,200,255,0.3); }
+
+  main { grid-row: 2; overflow: hidden; display: flex; flex-direction: column; }
+
+  .display-area {
+    flex: 1; overflow-y: auto; padding: 28px 36px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    scrollbar-width: thin; scrollbar-color: var(--panel-border) transparent;
+  }
+  .display-area::-webkit-scrollbar { width: 4px; }
+  .display-area::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 2px; }
+
+  .idle-state { text-align: center; opacity: 0.35; }
+  .idle-logo { font-family: var(--mono); font-size: 48px; color: var(--blue); letter-spacing: 0.3em; text-shadow: 0 0 40px rgba(0,200,255,0.3); }
+  .idle-hint { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.2em; margin-top: 12px; }
+
+  .response-card { width: 100%; max-width: 780px; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .response-label { font-family: var(--mono); font-size: 10px; color: var(--blue-dim); letter-spacing: 0.25em; margin-bottom: 10px; }
+  .response-text { font-family: var(--sans); font-size: 20px; line-height: 1.7; color: var(--text); font-weight: 400; }
+
+  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; width: 100%; max-width: 900px; animation: fadeUp 0.4s ease; }
+  .img-card { border: 1px solid var(--panel-border); border-radius: 2px; overflow: hidden; background: var(--panel); transition: border-color 0.2s; }
+  .img-card:hover { border-color: rgba(0,200,255,0.4); }
+  .img-card img { width: 100%; height: 160px; object-fit: cover; display: block; }
+  .img-caption { font-family: var(--mono); font-size: 9px; color: var(--text-dim); padding: 6px 8px; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .results-list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 780px; animation: fadeUp 0.4s ease; }
+  .result-card { background: var(--panel); border: 1px solid var(--panel-border); border-left: 2px solid var(--blue); padding: 12px 16px; border-radius: 2px; cursor: pointer; transition: border-color 0.2s; }
+  .result-card:hover { border-left-color: var(--green); }
+  .result-title { font-size: 15px; color: var(--text); margin-bottom: 4px; }
+  .result-url { font-family: var(--mono); font-size: 10px; color: var(--blue-dim); margin-bottom: 6px; }
+  .result-snippet { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
+  .weather-card { background: var(--panel); border: 1px solid var(--panel-border); padding: 32px 40px; border-radius: 2px; text-align: center; animation: fadeUp 0.4s ease; min-width: 320px; }
+  .weather-location { font-family: var(--mono); font-size: 11px; color: var(--blue-dim); letter-spacing: 0.25em; margin-bottom: 8px; }
+  .weather-temp { font-size: 72px; font-weight: 300; color: var(--blue); line-height: 1; margin-bottom: 8px; }
+  .weather-desc { font-size: 18px; color: var(--text); margin-bottom: 20px; }
+  .weather-meta { display: flex; gap: 24px; justify-content: center; }
+  .weather-meta-item { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .weather-meta-item span { display: block; color: var(--text); font-size: 13px; margin-top: 2px; }
+
+  .clock-display { text-align: center; animation: fadeUp 0.4s ease; }
+  .clock-time { font-family: var(--mono); font-size: 80px; color: var(--blue); letter-spacing: 0.1em; text-shadow: 0 0 40px rgba(0,200,255,0.4); line-height: 1; }
+  .clock-date { font-family: var(--mono); font-size: 14px; color: var(--text-dim); letter-spacing: 0.25em; margin-top: 10px; }
+
+  .thinking-display { text-align: center; }
+  .thinking-display .tdots span { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--blue-dim); margin: 0 4px; animation: tblink 1.2s infinite; }
+  .thinking-display .tdots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-display .tdots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes tblink { 0%,80%,100%{transform:translateY(0);opacity:0.4} 40%{transform:translateY(-8px);opacity:1} }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--panel-border);
+    padding: 10px 32px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .wake-indicator { display: flex; align-items: center; gap: 8px; }
+  .wake-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); transition: all 0.3s; }
+  .wake-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .wake-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; }
+  .footer-hint { font-family: var(--mono); font-size: 10px; color: var(--text-dim); opacity: 0.45; letter-spacing: 0.1em; }
+  .mic-btn { width: 36px; height: 36px; border-radius: 50%; background: none; border: 1px solid var(--panel-border); color: var(--text-dim); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .mic-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .mic-btn.active { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 14px rgba(0,200,255,0.3); }
+</style>
+</head>
+<body>
+
+<div class="drag-region"></div>
+<!-- SLEEP SCREEN -->
+<div id="sleep-screen">
+  <div class="sleep-logo">J.A.R.V.I.S. — Standby</div>
+  <div class="sleep-orb"><div class="sleep-dot"></div></div>
+  <div class="sleep-hint">Say "Jarvis, wake up" to initialise</div>
+</div>
+
+<!-- BOOT OVERLAY -->
+<div id="boot-overlay">
+  <div class="boot-logo" id="boot-logo">J.A.R.V.I.S.</div>
+  <div class="boot-lines" id="boot-lines"></div>
+  <div class="boot-bar-wrap">
+    <div class="boot-bar-label">INITIALISING SYSTEMS</div>
+    <div class="boot-bar-track"><div class="boot-bar-fill" id="boot-bar"></div></div>
+  </div>
+</div>
+
+<!-- MAIN UI -->
+<div id="main-ui">
+  <div class="corners">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+  <div class="layout">
+    <header>
+      <div>
+        <div class="logo-sub">Stark Industries — AI Division</div>
+        <div class="logo-title">J.A.R.V.I.S.</div>
+      </div>
+      <div class="header-right">
+        <div class="api-wrap">
+          <label>ANTHROPIC</label>
+          <input type="password" id="api-key" placeholder="sk-ant-..." />
+        </div>
+        <div class="api-wrap">
+          <label>ELEVENLABS</label>
+          <input type="password" id="el-key" placeholder="api key..." />
+        </div>
+        <div class="api-wrap">
+          <label>GOOGLE KEY</label>
+          <input type="password" id="goog-key" placeholder="AIza..." />
+        </div>
+        <div class="api-wrap">
+          <label>GOOGLE CX</label>
+          <input type="text" id="goog-cx" placeholder="Search engine ID..." />
+          <button class="save-btn" onclick="saveKeys()">SAVE</button>
+        </div>
+        <div class="hdr-pill" id="pill">ONLINE</div>
+      </div>
+    </header>
+
+    <aside>
+      <div class="orb-wrap">
+        <div class="orb-outer" id="orb" onclick="toggleListen()" title="Click to speak">
+          <div class="orb-ring r3"></div>
+          <div class="orb-ring r2"></div>
+          <div class="orb-ring"></div>
+          <div class="orb-core" id="orb-core">🎙</div>
+        </div>
+        <div class="orb-status" id="orb-status">Ready</div>
+      </div>
+      <div>
+        <div class="s-title">Systems</div>
+        <div class="cap on"><div class="cdot"></div>Web Search</div>
+        <div class="cap on"><div class="cdot"></div>Voice I/O</div>
+        <div class="cap on"><div class="cdot"></div>Image Retrieval</div>
+        <div class="cap on" style="flex-direction:column;align-items:flex-start;gap:2px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="cdot" id="wake-cdot" style="background:var(--text-dim);"></div>
+            <span>"Jarvis" wake word</span>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;">
+        <div class="s-title">Recent</div>
+        <div class="transcript" id="transcript"></div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="display-area" id="display">
+        <div class="idle-state">
+          <div class="idle-logo">J.A.R.V.I.S.</div>
+          <div class="idle-hint">Say "Jarvis" to begin</div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wake-indicator">
+        <div class="wake-dot" id="wake-dot"></div>
+        <div class="wake-label" id="wake-label">WAKE WORD ACTIVE</div>
+      </div>
+      <div class="footer-hint">Say "Jarvis" · click orb · or press Space</div>
+      <button class="mic-btn" id="mic-btn" onclick="toggleListen()" aria-label="Speak">🎙</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const EL_VOICE_ID = 'onwK4e9ZLuTAKqWW03F9';
+const EL_MODEL = 'eleven_flash_v2_5';
+const USER_NAME = 'Callum';
+
+const FILLER_PHRASES = [
+  `One moment, sir.`,
+  `Of course, sir.`,
+  `Right away, sir.`,
+  `Leave it with me, sir.`,
+  `Understood, sir.`,
+  `Very good, sir.`,
+  `At once, sir.`,
+  `Consider it done, sir.`,
+];
+
+const SYSTEM = `You are JARVIS, a highly sophisticated artificial intelligence serving ${USER_NAME}, a gentleman of discerning taste. You are impeccably formal, unhurried, and possessed of a dry, aristocratic British wit. Address ${USER_NAME} as "sir" at all times. Never use contractions. Speak in elegant, measured prose — never bullet points or markdown. You have web search capability. Today is ${new Date().toDateString()}.
+
+CRITICAL — respond ONLY in this exact JSON structure:
+{
+  "speech": "What you say aloud — elegant prose, 1-3 sentences",
+  "display": {
+    "type": "text|images|results|weather|clock|none",
+    "data": <see below>
+  }
+}
+
+Display types:
+- "text": data = null
+- "images": data = { "query": "specific descriptive image search query" } — just provide the search query, images are fetched automatically
+- "results": data = [ { "title":"...", "url":"...", "snippet":"..." } ] — up to 5 items
+- "weather": data = { "location":"...", "temp":"...", "description":"...", "humidity":"...", "wind":"..." }
+- "clock": data = null
+- "none": data = null
+
+Always return valid JSON only. No other text.`;
+
+// ── State ─────────────────────────────────────────────────
+let history = [];
+let recognition = null;
+let isListening = false;
+let wakeRec = null;
+let wakeActive = false;
+let isAwake = false;
+let isBooting = false;
+let isBusy = false;
+const synth = window.speechSynthesis;
+
+// Broad wake word patterns including "wake up"
+const WAKE_WORDS = ['jarvis', 'hey jarvis', 'hi jarvis', 'ok jarvis', 'okay jarvis', 'hello jarvis'];
+const BOOT_WORDS = ['wake up', 'wake', 'jarvis wake', 'jarvis wake up', 'come online', 'initialise', 'initialize', 'start up', 'boot up'];
+
+let apiKey = localStorage.getItem('jarvis_key') || '';
+let elKey = localStorage.getItem('jarvis_el_key') || '';
+let googKey = localStorage.getItem('jarvis_goog_key') || '';
+let googCx = localStorage.getItem('jarvis_goog_cx') || '';
+if (apiKey) document.getElementById('api-key').value = apiKey;
+if (elKey) document.getElementById('el-key').value = elKey;
+if (googKey) document.getElementById('goog-key').value = googKey;
+if (googCx) document.getElementById('goog-cx').value = googCx;
+
+function saveKeys() {
+  apiKey = document.getElementById('api-key').value.trim();
+  elKey = document.getElementById('el-key').value.trim();
+  googKey = document.getElementById('goog-key').value.trim();
+  googCx = document.getElementById('goog-cx').value.trim();
+  localStorage.setItem('jarvis_key', apiKey);
+  localStorage.setItem('jarvis_el_key', elKey);
+  localStorage.setItem('jarvis_goog_key', googKey);
+  localStorage.setItem('jarvis_goog_cx', googCx);
+  flash('SAVED', true);
+}
+
+// ── Boot sequence ─────────────────────────────────────────
+const BOOT_SEQUENCE = [
+  'Neural network initialised',
+  'Voice synthesis online',
+  'Web search connected',
+  'Memory banks loaded',
+  'Security protocols active',
+  'All systems nominal',
+];
+
+async function runBootSequence() {
+  if (isBooting || isAwake) return;
+  isBooting = true;
+  const overlay = document.getElementById('boot-overlay');
+  const logo = document.getElementById('boot-logo');
+  const linesEl = document.getElementById('boot-lines');
+  const bar = document.getElementById('boot-bar');
+  const sleep = document.getElementById('sleep-screen');
+
+  // hide sleep, show boot
+  sleep.classList.add('hidden');
+  await delay(600);
+  overlay.classList.add('active');
+  await delay(200);
+
+  logo.classList.add('show');
+  await delay(700);
+
+  for (let i = 0; i < BOOT_SEQUENCE.length; i++) {
+    const line = document.createElement('div');
+    line.className = 'boot-line';
+    line.innerHTML = `<span>${BOOT_SEQUENCE[i]}</span><span class="ok">OK</span>`;
+    linesEl.appendChild(line);
+    await delay(30);
+    line.classList.add('show');
+    bar.style.width = ((i + 1) / BOOT_SEQUENCE.length * 100) + '%';
+    await delay(220);
+  }
+
+  await delay(400);
+
+  // fade boot overlay, show main UI
+  overlay.style.transition = 'opacity 0.8s ease';
+  overlay.style.opacity = '0';
+  const mainUI = document.getElementById('main-ui');
+  mainUI.classList.add('visible');
+
+  await delay(900);
+  overlay.classList.remove('active');
+  overlay.style.opacity = '';
+
+  isAwake = true;
+
+  // speak wake greeting
+  await delay(200);
+  const greeting = `Good day, ${USER_NAME}, sir. All systems are fully operational. I am at your disposal.`;
+  renderDisplay('text', null, greeting);
+  setOrb('speaking');
+  addTranscript('jarvis', greeting);
+  await speak(greeting);
+  setOrb(null);
+  startConvoListen();
+}
+
+// ── UI helpers ────────────────────────────────────────────
+function flash(msg, ok) {
+  const p = document.getElementById('pill');
+  const oc = p.textContent, os = p.style.cssText;
+  p.textContent = msg;
+  p.style.color = ok ? 'var(--green)' : 'var(--red)';
+  p.style.borderColor = ok ? 'var(--green)' : 'var(--red)';
+  setTimeout(() => { p.textContent = oc; p.style.cssText = os; }, 2000);
+}
+
+function setOrb(state, statusText) {
+  const o = document.getElementById('orb');
+  const c = document.getElementById('orb-core');
+  const s = document.getElementById('orb-status');
+  o.className = 'orb-outer' + (state ? ' ' + state : '');
+  c.textContent = state === 'listening' ? '🎙' : state === 'thinking' ? '⚙' : state === 'speaking' ? '🔊' : '🎙';
+  if (s) s.textContent = statusText || ({ listening: 'Listening...', thinking: 'Processing...', speaking: 'Speaking...' }[state] || 'Ready');
+}
+
+function setWakeUI(on) {
+  const d = document.getElementById('wake-dot');
+  const l = document.getElementById('wake-label');
+  const c = document.getElementById('wake-cdot');
+  if (d) { d.className = 'wake-dot' + (on ? ' on' : ''); }
+  if (l) { l.textContent = on ? 'WAKE WORD ACTIVE' : 'WAKE WORD INACTIVE'; l.style.color = on ? 'var(--green)' : 'var(--text-dim)'; }
+  if (c) { c.style.background = on ? 'var(--green)' : 'var(--text-dim)'; c.style.boxShadow = on ? '0 0 5px var(--green)' : 'none'; }
+}
+
+function addTranscript(role, text) {
+  const t = document.getElementById('transcript');
+  const d = document.createElement('div');
+  d.className = 't-msg ' + role;
+  d.textContent = (role === 'jarvis' ? 'J: ' : 'C: ') + text;
+  t.appendChild(d);
+  t.scrollTop = t.scrollHeight;
+  while (t.children.length > 20) t.removeChild(t.firstChild);
+}
+
+function appendImgCard(grid, src, caption) {
+  const card = document.createElement('div');
+  card.className = 'img-card';
+  const im = document.createElement('img');
+  im.src = src;
+  im.alt = caption;
+  im.onerror = () => { im.onerror = null; im.src = `https://picsum.photos/seed/${Math.floor(Math.random()*9999)}/800/600`; };
+  const cap = document.createElement('div');
+  cap.className = 'img-caption';
+  cap.textContent = caption;
+  card.appendChild(im); card.appendChild(cap);
+  grid.appendChild(card);
+}
+
+function fallbackPicsum(grid, query) {
+  const topic = encodeURIComponent(query);
+  [13,27,41,55,69,83].forEach(s => appendImgCard(grid, `https://picsum.photos/seed/${topic}${s}/800/600`, query));
+}
+
+// ── Display renderer ──────────────────────────────────────
+function showThinking() {
+  document.getElementById('display').innerHTML = '<div class="thinking-display"><div class="tdots"><span></span><span></span><span></span></div></div>';
+}
+
+function renderDisplay(type, data, speechText) {
+  const area = document.getElementById('display');
+  area.innerHTML = '';
+
+  if (type === 'clock') {
+    const d = document.createElement('div');
+    d.className = 'clock-display';
+    const tick = () => {
+      const n = new Date();
+      d.innerHTML = `<div class="clock-time">${n.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div><div class="clock-date">${n.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'}).toUpperCase()}</div>`;
+    };
+    tick();
+    area.appendChild(d);
+    const timer = setInterval(() => { if (d.isConnected) tick(); else clearInterval(timer); }, 1000);
+    return;
+  }
+
+  if (type === 'images' && data) {
+    const grid = document.createElement('div');
+    grid.className = 'img-grid';
+    area.appendChild(grid);
+    const query = data.query || 'nature';
+
+    // Try Google Image Search first, fall back to Picsum
+    if (googKey && googCx) {
+      const url = `https://www.googleapis.com/customsearch/v1?key=${googKey}&cx=${googCx}&q=${encodeURIComponent(query)}&searchType=image&num=6&safe=active`;
+      fetch(url)
+        .then(r => r.json())
+        .then(d => {
+          const items = d.items || [];
+          if (items.length) {
+            items.forEach(item => appendImgCard(grid, item.link, item.title || query));
+          } else {
+            fallbackPicsum(grid, query);
+          }
+        })
+        .catch(() => fallbackPicsum(grid, query));
+    } else {
+      fallbackPicsum(grid, query);
+    }
+    return;
+  }
+
+  if (type === 'results' && data && data.length) {
+    const list = document.createElement('div');
+    list.className = 'results-list';
+    data.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `<div class="result-title">${r.title||''}</div><div class="result-url">${r.url||''}</div><div class="result-snippet">${r.snippet||''}</div>`;
+      card.onclick = () => { if(window.electronAPI) window.electronAPI.openExternal(r.url); else window.open(r.url,'_blank'); };
+      list.appendChild(card);
+    });
+    area.appendChild(list);
+    return;
+  }
+
+  if (type === 'weather' && data) {
+    const card = document.createElement('div');
+    card.className = 'weather-card';
+    card.innerHTML = `<div class="weather-location">${(data.location||'').toUpperCase()}</div><div class="weather-temp">${data.temp||'--'}</div><div class="weather-desc">${data.description||''}</div><div class="weather-meta"><div class="weather-meta-item">HUMIDITY<span>${data.humidity||'--'}</span></div><div class="weather-meta-item">WIND<span>${data.wind||'--'}</span></div></div>`;
+    area.appendChild(card);
+    return;
+  }
+
+  if (speechText) {
+    const card = document.createElement('div');
+    card.className = 'response-card';
+    card.innerHTML = `<div class="response-label">JARVIS</div><div class="response-text">${speechText}</div>`;
+    area.appendChild(card);
+  } else {
+    area.innerHTML = '<div class="idle-state"><div class="idle-logo">J.A.R.V.I.S.</div><div class="idle-hint">Say "Jarvis" to begin</div></div>';
+  }
+}
+
+// ── AI ────────────────────────────────────────────────────
+async function askJarvis(userText) {
+  if (!apiKey || isBusy) return;
+  isBusy = true;
+  addTranscript('user', userText);
+  history.push({ role: 'user', content: userText });
+
+  // Race the API against a short delay — only play filler if API is slow
+  const filler = FILLER_PHRASES[Math.floor(Math.random() * FILLER_PHRASES.length)];
+  let apiDone = false;
+  const apiPromise = callAPI().then(r => { apiDone = true; return r; });
+
+  // Give API 600ms head start before committing to filler
+  const apiResult = await Promise.race([
+    apiPromise,
+    new Promise(res => setTimeout(() => res(null), 600))
+  ]);
+
+  if (apiResult) {
+    // API was fast — skip filler entirely, go straight to answer
+    setOrb('thinking', 'Processing...');
+    const parsed = apiResult;
+    const speech = parsed.speech || 'My apologies, sir.';
+    const displayType = parsed.display?.type || 'text';
+    const displayData = parsed.display?.data || null;
+    history.push({ role: 'assistant', content: JSON.stringify(parsed) });
+    addTranscript('jarvis', speech);
+    renderDisplay(displayType, displayData, speech);
+    setOrb('speaking');
+    await speak(speech);
+    setOrb(null);
+    isBusy = false;
+    startConvoListen();
+    return;
+  }
+
+  // API is taking a while — play filler while we wait
+  setOrb('speaking', 'Responding...');
+  renderDisplay('text', null, filler);
+  const [, slowApiResult] = await Promise.all([speak(filler), apiPromise]);
+
+  setOrb('thinking', 'Processing...');
+  showThinking();
+
+  let parsed;
+  try { parsed = slowApiResult; }
+  catch(e) { parsed = { speech: 'I appear to have encountered a difficulty, sir.', display: { type: 'text', data: null } }; }
+
+  const speech = parsed.speech || 'My apologies, sir — I was unable to formulate a response.';
+  const displayType = parsed.display?.type || 'text';
+  const displayData = parsed.display?.data || null;
+
+  history.push({ role: 'assistant', content: JSON.stringify(parsed) });
+  addTranscript('jarvis', speech);
+  renderDisplay(displayType, displayData, speech);
+  setOrb('speaking');
+  await speak(speech);
+  setOrb(null);
+  isBusy = false;
+  // Auto-listen for follow-up — drops to wake word after CONVO_TIMEOUT_MS of silence
+  startConvoListen();
+}
+
+async function callAPI() {
+  const r = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 600,
+      system: SYSTEM,
+      messages: history,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }]
+    })
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error?.message || 'HTTP ' + r.status);
+  }
+  const data = await r.json();
+  const rawText = data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    return JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+  } catch(e) {
+    return { speech: rawText, display: { type: 'text', data: null } };
+  }
+}
+
+// ── ElevenLabs TTS ────────────────────────────────────────
+async function speak(text) {
+  if (elKey) {
+    try {
+      const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          model_id: EL_MODEL,
+          voice_settings: { stability: 0.55, similarity_boost: 0.90, style: 0.25, use_speaker_boost: true }
+        })
+      });
+      if (!resp.ok) throw new Error('EL ' + resp.status);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      await new Promise((res, rej) => {
+        const audio = new Audio(url);
+        audio.onended = () => { URL.revokeObjectURL(url); res(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); res(); };
+        audio.play().catch(() => res());
+      });
+      return;
+    } catch(e) { console.warn('ElevenLabs fallback:', e.message); }
+  }
+  if (!synth) return;
+  synth.cancel();
+  await new Promise(res => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.82; u.pitch = 0.75; u.volume = 1;
+    const voices = synth.getVoices();
+    const v = voices.find(v => v.lang === 'en-GB' && /daniel/i.test(v.name))
+      || voices.find(v => v.lang === 'en-GB')
+      || voices.find(v => v.lang.startsWith('en'));
+    if (v) u.voice = v;
+    u.onend = res; u.onerror = res;
+    synth.speak(u);
+  });
+}
+
+function _playChunksWhenReady() {}
+
+// ── Sleep-time wake listener (listens for "wake up") ──────
+function startSleepListener() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const rec = new SR();
+  rec.lang = 'en-GB';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript.trim().toLowerCase();
+      // trigger on "jarvis" + any boot word, or just boot words
+      const hasJarvis = t.includes('jarvis');
+      const hasBoot = BOOT_WORDS.some(w => t.includes(w));
+      if (hasBoot || (hasJarvis && t.length < 30)) {
+        rec.stop();
+        runBootSequence();
+        return;
+      }
+    }
+  };
+  rec.onerror = e => {
+    if (e.error !== 'aborted' && e.error !== 'not-allowed') setTimeout(startSleepListener, 3000);
+  };
+  rec.onend = () => { if (!isAwake) setTimeout(startSleepListener, 500); };
+  rec.start();
+}
+
+// ── Active wake word listener ─────────────────────────────
+function startWakeListener() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || wakeActive || isListening || !isAwake || isBusy) return;
+  wakeRec = new SR();
+  wakeRec.lang = 'en-GB';
+  wakeRec.continuous = true;
+  wakeRec.interimResults = true;
+  // lower confidence threshold by also checking interim results
+  wakeRec.maxAlternatives = 3;
+  wakeRec.onstart = () => { wakeActive = true; setWakeUI(true); };
+  wakeRec.onresult = e => {
+    if (isListening || isBusy) return;
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      // check all alternatives
+      for (let j = 0; j < e.results[i].length; j++) {
+        const t = e.results[i][j].transcript.trim().toLowerCase();
+        if (WAKE_WORDS.some(w => t.includes(w))) {
+          wakeRec.stop();
+          wakeActive = false;
+          setTimeout(startListen, 250);
+          return;
+        }
+      }
+    }
+  };
+  wakeRec.onerror = e => {
+    wakeActive = false; setWakeUI(false);
+    if (e.error !== 'aborted' && e.error !== 'not-allowed') setTimeout(startWakeListener, 2000);
+  };
+  wakeRec.onend = () => {
+    wakeActive = false; setWakeUI(false);
+    if (!isListening && !isBusy && isAwake) setTimeout(startWakeListener, 400);
+  };
+  wakeRec.start();
+}
+
+const CONVO_TIMEOUT_MS = 8000; // 8 seconds to respond before dropping back to wake word
+let convoTimer = null;
+
+function startConvoListen() {
+  clearTimeout(convoTimer);
+  // Drop back to wake word if Callum doesn't speak within the timeout
+  convoTimer = setTimeout(() => {
+    if (isListening) { stopListen(); }
+    startWakeListener();
+    setOrb(null, 'Awaiting summons');
+  }, CONVO_TIMEOUT_MS);
+  startListen();
+}
+
+function toggleListen() { if (!isAwake) return; isListening ? stopListen() : startListen(); }
+
+function startListen() {
+  if (!isAwake || isBusy) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { flash('VOICE UNSUPPORTED', false); return; }
+  if (wakeRec) { try { wakeRec.stop(); } catch(e){} wakeRec = null; wakeActive = false; }
+  recognition = new SR();
+  recognition.lang = 'en-GB';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 5;
+  recognition.continuous = false;
+  recognition.onstart = () => {
+    isListening = true; setOrb('listening');
+    document.getElementById('mic-btn').classList.add('active');
+    setWakeUI(false);
+  };
+  recognition.onresult = e => {
+    clearTimeout(convoTimer);
+    // pick highest-confidence alternative
+    let best = '', bestConf = -1;
+    for (let j = 0; j < e.results[0].length; j++) {
+      if (e.results[0][j].confidence > bestConf) {
+        bestConf = e.results[0][j].confidence;
+        best = e.results[0][j].transcript;
+      }
+    }
+    const t = best || e.results[0][0].transcript;
+    stopListen();
+    askJarvis(t);
+  };
+  recognition.onerror = e => {
+    if (e.error !== 'aborted') flash(e.error || 'MIC ERROR', false);
+    stopListen();
+  };
+  recognition.onend = () => { if (isListening) stopListen(); };
+  recognition.start();
+}
+
+function stopListen() {
+  clearTimeout(convoTimer);
+  isListening = false;
+  if (recognition) { try { recognition.stop(); } catch(e){} }
+  document.getElementById('mic-btn').classList.remove('active');
+  setOrb(null);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.target.matches('input,textarea') && isAwake) {
+    e.preventDefault(); toggleListen();
+  }
+});
+
+function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+window.speechSynthesis.onvoiceschanged = () => {};
+
+// Start in sleep mode — listen for boot trigger
+startSleepListener();
+</script>
+</body>
+</html>

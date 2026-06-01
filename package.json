@@ -1,0 +1,45 @@
+{
+  "name": "jarvis",
+  "version": "1.0.0",
+  "description": "J.A.R.V.I.S. — Personal AI Assistant",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac --x64 --arm64"
+  },
+  "build": {
+    "appId": "com.callum.jarvis",
+    "productName": "JARVIS",
+    "copyright": "Callum",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "dmg": {
+      "title": "JARVIS",
+      "background": "build/dmg-background.png",
+      "window": { "width": 540, "height": 360 },
+      "contents": [
+        { "x": 140, "y": 180, "type": "file" },
+        { "x": 400, "y": 180, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "preload.js"
+    ],
+    "extraResources": []
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}
